@@ -7,6 +7,10 @@ from aqt.qt import QAction, qconnect
 # import the "show info" tool from utils.py
 from aqt.utils import showInfo, tooltip
 
+from get_diff import get_cards_by_tag
+
+from .src import init
+
 # We're going to add a menu item below. First we want to create a function to
 # be called when the menu item is activated.
 
@@ -14,8 +18,10 @@ from aqt.utils import showInfo, tooltip
 def test_function() -> None:
     """Show card count in current collection."""
     if mw is not None and mw.col is not None:
-        card_count = mw.col.card_count()
-        showInfo(f"Card count: {card_count}")
+        counter = 0
+        ids = get_cards_by_tag("yomitan")
+
+        showInfo(f"Card count: {ids}")
     else:
         tooltip("Collection not available")
 
