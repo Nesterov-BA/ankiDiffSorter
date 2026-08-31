@@ -1,0 +1,20 @@
+[project]
+name = "ankidiffsorter"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "Nesterov-BA", email = "nesterov.boris123@gmail.com" }
+]
+requires-python = ">=3.13"
+dependencies = [
+    "aqt>=26.8.1",
+    "mypy>=2.3.1",
+]
+
+[project.scripts]
+ankidiffsorter = "ankidiffsorter:main"
+
+[build-system]
+requires = ["uv_build>=0.12.7,<0.13.0"]
+build-backend = "uv_build"
