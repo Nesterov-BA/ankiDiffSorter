@@ -10,54 +10,50 @@ from aqt.utils import showInfo, tooltip
 # We're going to add a menu item below. First we want to create a function to
 # be called when the menu item is activated.
 from .src.get_diff import (
-    get_cards_by_tag,
-    get_field_difficulties,
-    get_field_values_from_deck,
+    calculate_notes_difficulties,
     get_mature_words,
-    get_sentence_difficulty,
     get_young_words,
 )
 
 # Initialize the controller
 
 
+def get_config():
+    """Return the add‑on configuration dict with fallback defaults."""
+    config = mw.addonManager.getConfig(__name__)
+    if config is None:
+        # Create default config file if it doesn't exist
+        default_config = {
+            "deck_name": "Mining",
+            "word_field": "Word",
+            "sentence_field": "Sentence",
+        }
+        mw.addonManager.writeConfig(__name__, default_config)
+        return default_config
+    return config
+
+
 def test_function() -> None:
     """Show card count in current collection."""
     if mw is not None and mw.col is not None:
-        word_list = get_field_values_from_deck("Mining", "Word")
-        young_words = get_young_words("Mining", "Word")
-        mature_words = get_mature_words("Mining", "Word")
-        difficulties = get_field_difficulties(
-            "Mining", "Sentence", mature_words, young_words
+        cfg = get_config()
+        deck_name = cfg["deck_name"]
+        word_field = cfg["word_field"]
+        sentence_field = cfg["sentence_field"]
+
+        young_words = get_young_words(deck_name, word_field)
+        mature_words = get_mature_words(deck_name, word_field)
+        calculate_notes_difficulties(
+            deck_name, sentence_field, mature_list=mature_words, young_list=young_words
         )
-        showInfo(f"Words: {difficulties}")
+        showInfo(f"Finished recalc!")
     else:
         tooltip("Collection not available")
 
 
-def show_mining_stats():
-    if mw is None or mw.col is None:
-        tooltip("Collection not available")
-        return
-
-    col = mw.col
-    young_ids = col.find_cards('deck:"Mining" is:review prop:ivl<21')
-    mature_ids = col.find_cards('deck:"Mining" is:review prop:ivl>=21')
-
-    showInfo(
-        f"Deck 'Mining' stats:\n"
-        f"Young cards: {len(young_ids)}\n"
-        f"Mature cards: {len(mature_ids)}\n"
-        f"Total reviews: {len(young_ids) + len(mature_ids)}"
-    )
-
-
 # create a new menu item, "test"
-action = QAction("test", mw)
-action2 = QAction("test2", mw)
+action = QAction("Difficulty based reorder", mw)
 # set it to call testFunction when it's clicked
 qconnect(action.triggered, test_function)
-qconnect(action2.triggered, show_mining_stats)
 # and add it to the tools menu
 mw.form.menuTools.addAction(action)
-mw.form.menuTools.addAction(action2)
