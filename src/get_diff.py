@@ -3,6 +3,8 @@ import re
 from aqt import mw
 
 from . import mecab_controller
+from .furigana import AnnotatedText
+from .mecab_controller.basic_types import PartOfSpeech
 
 
 def get_cards_by_tag(tag):
@@ -86,41 +88,86 @@ def get_new_card_from_deck(deck_name):
 
 
 def get_words(sentence, mecab):
-    tokens = mecab.translate(sentence)
+    tokens = get_tokens(sentence, mecab)
     words = [t.word for t in tokens]
     return words
+
+
+def _plain_tokens(sentence, mecab):
+    """Tokenize a (possibly annotated) sentence on its plain view."""
+    annotated = AnnotatedText(sentence)
+    tokens = list(mecab.translate(annotated.plain))
+    return annotated, tokens
+
+
+def _token_spans(annotated: AnnotatedText, tokens) -> list[tuple[int, int] | None]:
+    """
+    Map every token back onto plain-text character coordinates.
+
+    Whitespace is not part of tokens (mecab never emits it) but it is present
+    in ``plain``, so the walker skips it while aligning token words.
+    """
+    plain = annotated.plain
+    spans: list[tuple[int, int] | None] = []
+    pos = 0
+    for token in tokens:
+        word = token.word
+        if not word:
+            spans.append(None)
+            continue
+        start = plain.find(word, pos)
+        if start == -1:
+            spans.append(None)
+            continue
+        spans.append((start, start + len(word)))
+        pos = start + len(word)
+    return spans
+
+
+def _analyze(sentence, mature_list, young_list, mecab):
+    """Tokenize (furigana-aware), classify and highlight in one pass."""
+    annotated, tokens = _plain_tokens(sentence, mecab)
+    spans = _token_spans(annotated, tokens)
+    difficulty = 0
+    segments = []
+    headwords = []
+    for token, span in zip(tokens, spans):
+        headword = token.headword
+        headwords.append(headword)
+        if headword in mature_list:
+            status = "known"
+        elif headword in young_list:
+            difficulty += 1000
+            status = "learning"
+        elif token.part_of_speech is not PartOfSpeech.symbol and is_japanese(token.word):
+            difficulty += 1000000
+            status = "unknown"
+        else:
+            status = None
+        if status is not None and span is not None:
+            segments.append((span[0], span[1], status))
+    formatted_sentence = annotated.render(segments)
+    return difficulty, formatted_sentence, ", ".join(headwords)
 
 
 def get_sentence_difficulty(sentence, mature_list, young_list, mecab):
     """
     Returns integer sentence difficulty based on a list of known words
-    Args:
-        sentence ():
-        word_list ():
-        mecab ():
+    and a highlighted copy of the sentence.
 
-    Returns:
-
+    Furigana annotations (``word[reading]`` and ``<ruby>`` elements) are
+    removed before tokenization, so readings never inflate the difficulty;
+    the highlighted copy keeps the original markup and places each word's
+    reading inside the same morph-status span.
     """
-    # sentence_words = get_words(sentence, mecab)
-    sentence_tokens = get_tokens(sentence, mecab)
-    formatted_sentence = ""
-    difficulty = 0
-    for token in sentence_tokens:
-        word = token.word
-        headword = token.headword
-        part_of_speech = str(token.part_of_speech)
-        if headword in mature_list:
-            formatted_sentence += create_span(word, "known")
-        elif headword in young_list:
-            difficulty += 1000
-            formatted_sentence += create_span(word, "learning")
-        elif part_of_speech.split(".")[1] != "symbol" and is_japanese(word):
-            difficulty += 1000000
-            formatted_sentence += create_span(word, "unknown")
-        else:
-            formatted_sentence += headword + " "
+    difficulty, formatted_sentence, _ = _analyze(sentence, mature_list, young_list, mecab)
     return difficulty, formatted_sentence
+
+
+def get_sentence_headwords(sentence, mecab) -> str:
+    """Return the headwords of a sentence joined by commas (plain view)."""
+    annotated, tokens = _plain_tokens(sentence, mecab)
+    return ", ".join(token.headword for token in tokens)
 
 
 def create_span(text, morph_status):
@@ -160,12 +207,9 @@ def calculate_notes_difficulties(deck, field, mature_list, young_list):
         idx += 1
         note = card.note()
         sentence = note[field]
-        difficulty, formatted_sentence = get_sentence_difficulty(
+        difficulty, formatted_sentence, all_headwords = _analyze(
             sentence, mature_list, young_list, mecab
         )
-        tokens = get_tokens(sentence=sentence, mecab=mecab)
-        all_headwords = ""
-        all_headwords = ", ".join(token.headword for token in tokens)
         note["Comment"] = ""
         note["am-highlighted"] = formatted_sentence
         note["am-all-morphs"] = all_headwords
@@ -189,7 +233,8 @@ def get_young_words(deck_name, field_name):
 
 
 def get_tokens(sentence, mecab):
-    tokens = mecab.translate(sentence)
+    annotated = AnnotatedText(sentence)
+    tokens = mecab.translate(annotated.plain)
     return tokens
 
 
