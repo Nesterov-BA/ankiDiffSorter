@@ -70,6 +70,18 @@ def get_notes_from_ids(card_ids):
     return notes
 
 
+def get_cards_from_deck(deck_name):
+    card_ids = get_deck(deck_name=deck_name)
+    if mw is None or mw.col is None:
+        raise RuntimeError("Collection not available")
+    col = mw.col
+    cards = []
+    for cid in card_ids:
+        card = col.get_card(cid)
+        cards.append(card)
+    return cards
+
+
 def get_notes_from_deck(deck_name):
     ids = get_deck(deck_name)
     return get_notes_from_ids(ids)
@@ -131,6 +143,7 @@ def _analyze(sentence, mature_list, young_list, mecab):
     difficulty = 0
     segments = []
     headwords = []
+    unknown_headwords = []
     for token, span in zip(tokens, spans):
         headword = token.headword
         headwords.append(headword)
@@ -139,15 +152,23 @@ def _analyze(sentence, mature_list, young_list, mecab):
         elif headword in young_list:
             difficulty += 1000
             status = "learning"
-        elif token.part_of_speech is not PartOfSpeech.symbol and is_japanese(token.word):
+        elif token.part_of_speech is not PartOfSpeech.symbol and is_japanese(
+            token.word
+        ):
             difficulty += 1000000
             status = "unknown"
+            unknown_headwords.append(headword)
         else:
             status = None
         if status is not None and span is not None:
             segments.append((span[0], span[1], status))
     formatted_sentence = annotated.render(segments)
-    return difficulty, formatted_sentence, ", ".join(headwords)
+    return (
+        difficulty,
+        formatted_sentence,
+        ", ".join(headwords),
+        ", ".join(unknown_headwords),
+    )
 
 
 def get_sentence_difficulty(sentence, mature_list, young_list, mecab):
@@ -160,7 +181,9 @@ def get_sentence_difficulty(sentence, mature_list, young_list, mecab):
     the highlighted copy keeps the original markup and places each word's
     reading inside the same morph-status span.
     """
-    difficulty, formatted_sentence, _ = _analyze(sentence, mature_list, young_list, mecab)
+    difficulty, formatted_sentence, _, _ = _analyze(
+        sentence, mature_list, young_list, mecab
+    )
     return difficulty, formatted_sentence
 
 
@@ -195,6 +218,7 @@ def calculate_notes_difficulties(deck, field, mature_list, young_list):
         raise RuntimeError("Collection not available")
     # notes = get_notes_from_deck(deck)
     cards = get_new_card_from_deck(deck)
+    all_cards = get_cards_from_deck(deck_name=deck)
     total = len(cards)
     mw.progress.start(
         label=f"Calculating difficulties for {len(cards)} new cards…",
@@ -203,18 +227,20 @@ def calculate_notes_difficulties(deck, field, mature_list, young_list):
     )
     mw.app.processEvents()
     idx = 0
-    for card in cards:
+    for card in all_cards:
         idx += 1
         note = card.note()
         sentence = note[field]
-        difficulty, formatted_sentence, all_headwords = _analyze(
+        difficulty, formatted_sentence, all_headwords, all_unknowns = _analyze(
             sentence, mature_list, young_list, mecab
         )
         note["Comment"] = ""
         note["am-highlighted"] = formatted_sentence
         note["am-all-morphs"] = all_headwords
-        card.due = difficulty
-        card.flush()  # save the change
+        note["am-unknown-morphs"] = all_unknowns
+        if card in cards:
+            card.due = difficulty
+            card.flush()  # save the change
         mw.col.update_note(note)
         mw.progress.update(
             label=f"Calculating card difficulties {idx}/{total}…", value=idx
