@@ -1,0 +1,68 @@
+name: Build Anki Addon
+
+on:
+  push:
+    branches: [main, master]
+    tags: ['v*']
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      # Optional: install deps / run tests before packaging
+      # - name: Install dependencies
+      #   run: |
+      #     pip install -r requirements.txt
+      # - name: Run tests
+      #   run: pytest
+
+      - name: Build .ankiaddon
+        run: |
+          zip -r ankiDiffSorter.ankiaddon . \
+            -x "*.pyc" \
+            -x "__pycache__/*" \
+            -x "*/__pycache__/*" \
+            -x "*.git*" \
+            -x "uv.lock" \
+            -x "pyproject.toml" \
+            -x "test.html" \
+            -x "README.md" \
+            -x "src/ankidiffsorter/*" \
+            -x "src/mecab_controller/support/mecab.exe" \
+            -x "src/mecab_controller/support/libmecab.dll" \
+            -x "src/mecab_controller/support/libmecab.2.dylib" \
+            -x "src/mecab_controller/support/mecab.mac" \
+            -x "src/mecab_controller/support/mecab.lin"
+
+      - name: Verify archive contents
+        run: |
+          echo "=== Contents of ankiDiffSorter.ankiaddon ==="
+          unzip -l ankiDiffSorter.ankiaddon
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ankiDiffSorter-ankiaddon
+          path: ankiDiffSorter.ankiaddon
+          if-no-files-found: error
+
+      - name: Attach to Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ankiDiffSorter.ankiaddon
+          generate_release_notes: true
